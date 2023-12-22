@@ -2,6 +2,7 @@
 #define MATERIAL_H
 
 #include "rtweekend.h"
+#include "texture.h"
 
 using color = vec3;
 class hit_record;
@@ -12,11 +13,16 @@ class material {
 
         virtual bool scatter(
             const ray& r_in, const hit_record& rec, color& attentuation, ray& scattered) const = 0;
+
+        virtual color emitted(double u, double v, const point3& p) const {
+          return color(0,0,0);
+        }
 };
 
 class lambertian : public material {
   public:
-    lambertian(const color& a) : albedo(a) {}
+    lambertian(const color& a) : albedo(std::make_shared<solid_color>(a)) {}
+    lambertian(std::shared_ptr<texture> a) : albedo(a) {}
 
     bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered) const override {
         auto scatter_direction = rec.normal + random_unit_vector();
@@ -27,12 +33,12 @@ class lambertian : public material {
         }
 
         scattered = ray(rec.p, scatter_direction, r_in.time());
-        attenuation = albedo;
+        attenuation = albedo->value(rec.u, rec.v, rec.p);
         return true;
     }
 
   private:
-    color albedo;
+    std::shared_ptr<texture> albedo;
 };
 
 class metal : public material {
@@ -84,6 +90,39 @@ class dielectric : public material {
       r0 = r0*r0;
       return r0 + (1-r0)*pow((1 - cosine),5);
     }
+};
+
+class diffuse_light : public material {
+  public:
+    diffuse_light(std::shared_ptr<texture> a) : emit(a) {}
+    diffuse_light(color c) : emit(std::make_shared<solid_color>(c)) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attentuation, ray& scattered) const override {
+      return false;
+    }
+
+    color emitted(double u, double v, const point3& p) const override {
+      return emit->value(u, v, p);
+    }
+
+  private:
+    std::shared_ptr<texture> emit;
+};
+
+class isotropic : public material {
+  public:
+    isotropic(const color& c) : albedo(std::make_shared<solid_color>(c)) {}
+    isotropic(std::shared_ptr<texture> a) : albedo(a) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        scattered = ray(rec.p, random_unit_vector(), r_in.time());
+        attenuation = albedo->value(rec.u, rec.v, rec.p);
+        return true;
+    }
+
+  private:
+    std::shared_ptr<texture> albedo;
 };
 
 #endif
